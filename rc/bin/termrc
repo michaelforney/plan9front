@@ -93,4 +93,4 @@ screenrc
 if(test -f /dev/apm)
 	aux/apm
 
-dontkill '^(ipconfig|factotum|mntgen|venti|hjfs|kfs|cfs|cwfs.*|9660srv|dossrv|paqfs|cs|dns|listen|reboot|usbd|kb|disk|ether|wpa)$'
+dontkill '^(ipconfig|factotum|mntgen|venti|gefs|hjfs|kfs|cfs|cwfs.*|9660srv|dossrv|paqfs|cs|dns|listen|reboot|usbd|kb|disk|ether|wpa)$'

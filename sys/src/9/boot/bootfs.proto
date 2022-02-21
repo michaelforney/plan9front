@@ -30,6 +30,7 @@ $objtype
 		mv
 		ndb
 			dnsgetip
+		gefs
 		hjfs
 		rc
 		rm

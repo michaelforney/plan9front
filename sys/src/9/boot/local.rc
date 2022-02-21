@@ -65,6 +65,8 @@ fn connectlocal{
 			bootfs 9660srv $*
 		case dos
 			bootfs dossrv $*
+		case gefs
+			gefs -s boot $*(2-) $1
 		case *
 			bootfs $t $*
 		}
