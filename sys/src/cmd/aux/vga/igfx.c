@@ -722,7 +722,7 @@ genwrpll(int freq, int *n2, int *p, int *r2)
 }
 
 static int
-genpll(int freq, int cref, int P2, int *m1, int *m2, int *n, int *p1)
+genpll(int freq, int cref, int pmin, int pmax, int P2, int *m1, int *m2, int *n, int *p1)
 {
 	int M1, M2, M, N, P, P1;
 	int best, error;
@@ -731,16 +731,13 @@ genpll(int freq, int cref, int P2, int *m1, int *m2, int *n, int *p1)
 	best = -1;
 	for(N=3; N<=8; N++)
 	for(M2=5; M2<=9; M2++)
-//	for(M1=10; M1<=20; M1++){
 	for(M1=12; M1<=22; M1++){
 		M = 5*(M1+2) + (M2+2);
 		if(M < 79 || M > 127)
-//		if(M < 70 || M > 120)
 			continue;
 		for(P1=1; P1<=8; P1++){
 			P = P1 * P2;
-			if(P < 5 || P > 98)
-//			if(P < 4 || P > 98)
+			if(P < pmin || P > pmax)
 				continue;
 			a = cref;
 			a *= M;
@@ -781,7 +778,7 @@ getcref(Igfx *igfx, int x)
 static int
 initdpll(Igfx *igfx, int x, int freq, int port)
 {
-	int cref, m1, m2, n, n2, p1, p2, r2;
+	int cref, pmin, pmax, m1, m2, n, n2, p1, p2, r2;
 	Dpll *dpll;
 
 	switch(igfx->type){
@@ -871,8 +868,13 @@ initdpll(Igfx *igfx, int x, int freq, int port)
 			p2 >>= 1;
 			dpll->ctrl.v |= (1<<24);
 		}
-		if(genpll(freq, cref, p2, &m1, &m2, &n, &p1) < 0)
-			return -1;
+		if(igfx->type == TypeG45){
+			pmin = 7;
+			pmax = 98;
+		}else{
+			pmin = 28;
+			pmax = 112;
+		}
 	} else {
 		/* generate 270MHz clock for displayport */
 		if(port >= PortDPA)
@@ -883,9 +885,11 @@ initdpll(Igfx *igfx, int x, int freq, int port)
 			p2 >>= 1;
 			dpll->ctrl.v |= (1<<24);
 		}
-		if(genpll(freq, cref, p2, &m1, &m2, &n, &p1) < 0)
-			return -1;
+		pmin = 5;
+		pmax = 80;
 	}
+	if(genpll(freq, cref, pmin, pmax, p2, &m1, &m2, &n, &p1) < 0)
+		return -1;
 
 	/* Dpll VCO Enable */
 	dpll->ctrl.v |= (1<<31);
