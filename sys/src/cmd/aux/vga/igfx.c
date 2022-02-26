@@ -1178,6 +1178,10 @@ init(Vga* vga, Ctlr* ctlr)
 		igfx->lvds.v |= (1<<31);
 		igfx->ppcontrol.v |= 5;
 
+		/* use 6bpc if A3 is not powered up */
+		if((igfx->lvds.v>>6 & 3) != 3)
+			bpc = 6;
+
 		if(igfx->type == TypeG45){
 			igfx->lvds.v &= ~(1<<24);	/* data format select 18/24bpc */
 
