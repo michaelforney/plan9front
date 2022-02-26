@@ -1312,6 +1312,9 @@ init(Vga* vga, Ctlr* ctlr)
 
 	/* plane enable, 32bpp */
 	p->dsp->cntr.v = (1<<31) | (6<<26);
+	/* disable trickle feed */
+	if(igfx->type != TypeHSW)
+		p->dsp->cntr.v |= 1<<14;
 	if(igfx->type == TypeG45)
 		p->dsp->cntr.v |= x<<24;	/* pipe assign */
 	else
