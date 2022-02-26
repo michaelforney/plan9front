@@ -1077,6 +1077,12 @@ initpipe(Igfx *igfx, Pipe *p, Mode *m, int bpc, int port)
 			break;
 		}
 	}
+
+	/* enable spatial dithering when bpc does not match buffer (8bpc) */
+	p->conf.v &= ~(1<<4 | 3<<2);
+	if(bpc != 8)
+		p->conf.v |= 1<<4;
+
 	initdatalinkmn(p, m->frequency, 270*MHz, lanes, tu, 3*bpc);
 }
 
