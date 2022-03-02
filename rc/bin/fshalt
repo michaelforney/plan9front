@@ -54,7 +54,7 @@ bind /tmp /bin
 fn x {
 	echo
 	echo -n halting...
-	for (i in $c $h)
+	for (i in $c $h /srv/boot.cmd)
 		echo halt >>$i
 	for (i in $c $h){
 		echo -n $i...
