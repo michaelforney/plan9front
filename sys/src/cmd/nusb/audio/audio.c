@@ -7,14 +7,16 @@
 
 enum
 {
-	Rgetcur	= 0x81,
-	Rgetmin	= 0x82,
-	Rgetmax	= 0x83,
-	Rgetres	= 0x84,
+	Paudio1 = 0x00,
+	Paudio2 = 0x20,
+
+	/* audio 1 */
 	Rsetcur	= 0x01,
-	Rsetmin	= 0x02,
-	Rsetmax	= 0x03,
-	Rsetres	= 0x04,
+
+	/* audio 2 */
+	Rcur = 0x01,
+	Rrange = 0x02,
+	Csamfreq = 0x01,
 };
 
 typedef struct Range Range;
@@ -31,9 +33,15 @@ struct Aconf
 	int	bits;
 	int	format;
 	int	channels;
-	int	controls;
+	int	terminal;
 	Range	*freq;
 	int	nfreq;
+
+	/* audio 1 */
+	int	controls;
+
+	/* audio 2 */
+	int	clock;
 };
 
 int audiodelay = 1764;	/* 40 ms */
@@ -65,6 +73,24 @@ findiface(Conf *conf, int class, int subclass, int id)
 }
 
 Desc *
+findiad(Usbdev *u, int id, int csp)
+{
+	int i;
+	Desc *dd;
+	uchar *b;
+
+	for(i = 0; i < nelem(u->ddesc); i++){
+		dd = u->ddesc[i];
+		if(dd == nil || dd->data.bDescriptorType != 11 || dd->data.bLength != 8)
+			continue;
+		b = dd->data.bbytes;
+		if(b[0] == id && b[0] + b[1] <= Niface && csp == CSP(b[2], b[3], b[4]))
+			return dd;
+	}
+	return nil;
+}
+
+Desc *
 findacheader(Usbdev *u, Iface *ac)
 {
 	Desc *dd;
@@ -78,14 +104,70 @@ findacheader(Usbdev *u, Iface *ac)
 		if(dd->data.bLength < 8 || dd->data.bbytes[0] != 1)
 			continue;
 		b = dd->data.bbytes;
-		if(dd->data.bLength == 8 + b[5])
+		switch(Proto(ac->csp)){
+		case Paudio1:
+			if(dd->data.bLength == 8 + b[5])
+				return dd;
+			break;
+		case Paudio2:
+			if(dd->data.bLength == 9)
+				return dd;
+			break;
+		}
+	}
+	return nil;
+}
+
+Desc *
+findterminal(Usbdev *u, Iface *ac, int id)
+{
+	Desc *dd;
+	uchar *b;
+	int i;
+
+	for(i = 0; i < nelem(u->ddesc); i++){
+		dd = u->ddesc[i];
+		if(dd == nil || dd->iface != ac)
+			continue;
+		if(dd->data.bDescriptorType != 0x24 || dd->data.bLength < 4)
+			continue;
+		b = dd->data.bbytes;
+		if(b[1] != id)
+			continue;
+		/* check descriptor length according to type and proto */
+		switch(b[0]<<16 | dd->data.bLength<<8 | Proto(ac->csp)){
+		case 0x020C00|Paudio1:
+		case 0x030900|Paudio1:
+		case 0x021100|Paudio2:
+		case 0x030c00|Paudio2:
+			return dd;
+		}
+	}
+	return nil;
+}
+
+Desc *
+findclocksource(Usbdev *u, Iface *ac, int id)
+{
+	Desc *dd;
+	uchar *b;
+	int i;
+
+	for(i = 0; i < nelem(u->ddesc); i++){
+		dd = u->ddesc[i];
+		if(dd == nil || dd->iface != ac)
+			continue;
+		if(dd->data.bDescriptorType != 0x24 || dd->data.bLength != 8)
+			continue;
+		b = dd->data.bbytes;
+		if(b[0] == 0x0A && b[1] == id)
 			return dd;
 	}
 	return nil;
 }
 
 void
-parseasdesc(Desc *dd, Aconf *c)
+parseasdesc1(Desc *dd, Aconf *c)
 {
 	uchar *b;
 	Range *f;
@@ -129,6 +211,59 @@ parseasdesc(Desc *dd, Aconf *c)
 }
 
 void
+parseasdesc2(Desc *dd, Aconf *c)
+{
+	uchar *b;
+
+	b = dd->data.bbytes;
+	switch(dd->data.bDescriptorType<<8 | b[0]){
+	case 0x2401:	/* CS_INTERFACE, AS_GENERAL */
+		if(dd->data.bLength != 16 || b[3] != 1)
+			return;
+		c->terminal = b[1];
+		c->format = GET4(&b[4]);
+		c->channels = b[8];
+		break;
+
+	case 0x2402:	/* CS_INTERFACE, FORMAT_TYPE */
+		if(dd->data.bLength != 6 || b[1] != 1)
+			return;
+		c->bits = b[3];
+		break;
+	}
+}
+
+int
+setclock(Dev *d, Iface *ac, Aconf *c, int speed)
+{
+	uchar b[4];
+
+	PUT4(b, speed);
+	return usbcmd(d, Rh2d|Rclass|Riface, Rcur, Csamfreq<<8, c->clock<<8 | ac->id, b, sizeof(b));
+}
+
+int
+getclockrange(Dev *d, Iface *ac, Aconf *c)
+{
+	uchar b[2 + 32 * 12];
+	int i, n, rc;
+
+	rc = usbcmd(d, Rd2h|Rclass|Riface, Rrange, Csamfreq<<8, c->clock<<8 | ac->id, b, sizeof(b));
+	if(rc < 2)
+		return -1;
+	n = GET2(b);
+	if(rc < 2 + n * 12){
+		werrstr("unexpected response");
+		return -1;
+	}
+	c->freq = emallocz(n, sizeof(Range));
+	c->nfreq = n;
+	for(i = 0; i < n; i++)
+		c->freq[i] = (Range){GET4(&b[2 + i * 12]), GET4(&b[6 + i * 12])};
+	return 0;
+}
+
+void
 parsestream(Dev *d, Iface *ac, int id)
 {
 	Iface *as;
@@ -167,7 +302,42 @@ Skip:
 			dd = d->usb->ddesc[i];
 			if(dd == nil || dd->iface != as)
 				continue;
-			parseasdesc(dd, c);
+			switch(Proto(ac->csp)){
+			case Paudio1:
+				parseasdesc1(dd, c);
+				break;
+			case Paudio2:
+				parseasdesc2(dd, c);
+				break;
+			}
+		}
+
+		if(Proto(ac->csp) != Paudio2)
+			continue;
+
+		dd = findterminal(d->usb, ac, c->terminal);
+		if(dd == nil)
+			goto Skip;
+		b = dd->data.bbytes;
+		switch(b[0]){
+		case 0x02:	/* INPUT_TERMINAL */
+			c->clock = b[5];
+			break;
+		case 0x03:	/* OUTPUT_TERMINAL */
+			c->clock = b[6];
+			break;
+		}
+
+		dd = findclocksource(d->usb, ac, c->clock);
+		if(dd == nil)
+			goto Skip;
+		b = dd->data.bbytes;
+		/* check that clock has rw frequency control */
+		if((b[3] & 3) != 3)
+			goto Skip;
+		if(getclockrange(d, ac, id, c) != 0){
+			fprint(2, "getclockrange %d: %r", c->clock);
+			goto Skip;
 		}
 	}
 }
@@ -195,14 +365,24 @@ Foundaltc:
 		return nil;
 
 	e = c->ep;
-	if(c->controls & 1){
-		uchar b[4];
+	switch(Proto(e->iface->csp)){
+	case Paudio1:
+		if(c->controls & 1){
+			uchar b[4];
 
-		b[0] = speed;
-		b[1] = speed >> 8;
-		b[2] = speed >> 16;
-		if(usbcmd(d, Rh2d|Rclass|Rep, Rsetcur, 0x100, (e->dir==Ein?0x80:0)|(e->id&Epmax), b, 3) < 0)
-			fprint(2, "warning: set freq: %r\n");
+			b[0] = speed;
+			b[1] = speed >> 8;
+			b[2] = speed >> 16;
+			if(usbcmd(d, Rh2d|Rclass|Rep, Rsetcur, 0x100, (e->dir==Ein?0x80:0)|(e->id&Epmax), b, 3) < 0)
+				fprint(2, "warning: set freq: %r\n");
+		}
+		break;
+	case Paudio2:
+		if(setclock(d, ac, c, speed) < 0){
+			werrstr("setclock %d: %r", c->clock);
+			return nil;
+		}
+		break;
 	}
 
 	if((d = openep(d, e)) == nil){
@@ -313,11 +493,24 @@ main(int argc, char *argv[])
 		sysfatal("no audio control interface");
 	audiocontrol = ac;
 
-	dd = findacheader(d->usb, ac);
-	if(dd == nil)
-		sysfatal("no audio control header");
-	for(i = 6; i < dd->data.bLength - 2; i++)
-		parsestream(d, ac, dd->data.bbytes[i]);
+	switch(Proto(ac->csp)){
+	case Paudio1:
+		dd = findacheader(d->usb, ac);
+		if(dd == nil)
+			sysfatal("no audio control header");
+		b = dd->data.bbytes;
+		for(i = 6; i < dd->data.bLength - 2; i++)
+			parsestream(d, ac, b[i]);
+		break;
+	case Paudio2:
+		dd = findiad(d->usb, ac->id, CSP(Claudio, 0, Paudio2));
+		if(dd == nil)
+			sysfatal("no audio function");
+		b = dd->data.bbytes;
+		for(i = b[0]; i < b[0] + b[1]; i++)
+			parsestream(d, ac, i);
+		break;
+	}
 
 	for(i = 0; i < nelem(d->usb->ep; i++){
 		e = d->usb->ep[i];
