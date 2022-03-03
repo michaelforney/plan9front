@@ -52,15 +52,6 @@ enum {
 	Rsethubdepth	= 12,
 	Rgetporterrcnt	= 13,
 
-	Rgetcur	= 0x81,
-	Rgetmin	= 0x82,
-	Rgetmax	= 0x83,
-	Rgetres	= 0x84,
-	Rsetcur	= 0x01,
-	Rsetmin	= 0x02,
-	Rsetmax	= 0x03,
-	Rsetres	= 0x04,
-
 	/* dev classes */
 	Clnone		= 0,		/* not in usb */
 	Claudio		= 1,
@@ -108,6 +99,11 @@ enum {
 	Eiso = 1,
 	Ebulk = 2,
 	Eintr = 3,
+
+	/* endpoint isousage */
+	Edata = 0,
+	Efeedback = 1,
+	Eimplicit = 2,
 
 	/* config attrib */
 	Cbuspowered = 1<<7,
