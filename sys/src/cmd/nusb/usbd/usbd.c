@@ -220,12 +220,23 @@ usbdstat(Req *req)
 }
 
 static char *
-formatdev(Dev *d, int type)
+formatdev(Dev *d, int type, ulong csp)
 {
-	Usbdev *u = d->usb;
+	Usbdev *u;
+	int vid, did;
+
+	if(csp){
+		vid = 0;
+		did = 0;
+	}else{
+		u = d->usb;
+		vid = u->vid;
+		did = u->did;
+		csp = u->csp;
+	}
+
 	return smprint("%s %d %.4x %.4x %.6lx %s\n",
-		type ? "detach" : "attach",
-		d->id, u->vid, u->did, u->csp, 
+		type ? "detach" : "attach", d->id, vid, did, csp,
 		d->hname != nil ? d->hname : "");
 }
 
@@ -398,6 +409,7 @@ attachdev(Port *p)
 {
 	Dev *d = p->dev;
 	int id;
+	uchar *b;
 
 	if(d->usb->class == Clhub){
 		/*
@@ -440,7 +452,17 @@ attachdev(Port *p)
 		classname(Class(d->usb->csp)), d->usb->csp, d->usb->vid, d->usb->did,
 		d->usb->vendor, d->usb->product, d->hname);
 
-	pushevent(d, formatdev(d, 0));
+	pushevent(d, formatdev(d, 0, 0));
+
+	/* send attaches for all device functions */
+	for(i = 0; i < nelem(d->usb->ddesc); i++){
+		dd = u->ddesc[i];
+		if(dd == nil || dd->data.bDescriptorType != 11 || dd->data.bLength != 8)
+			continue;
+		b = dd->data.bbytes;
+		pushevent(d, formatdev(d, 0, CSP(b[2], b[3], b[4]));
+	}
+
 	return 0;
 }
 
@@ -451,7 +473,7 @@ detachdev(Port *p)
 
 	if(d->usb->class == Clhub)
 		return;
-	pushevent(d, formatdev(d, 1));
+	pushevent(d, formatdev(d, 1, 0));
 }
 
 /*
