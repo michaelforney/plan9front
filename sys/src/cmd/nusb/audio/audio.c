@@ -92,7 +92,7 @@ setupep(Dev *d, Ep *e, int speed)
 	Range *f;
 
 	for(;e != nil; e = e->next){
-		if(e->dir!=dir && e->dir!=Eboth)
+		if(e->dir!=dir)
 			continue;
 		c = e->iface->aux;
 		if(c == nil)
@@ -231,14 +231,6 @@ main(int argc, char *argv[])
 				if(audioepout != nil)
 					continue;
 				audioepout = e;
-				break;
-			case Eboth:
-				if(audioepin != nil && audioepout != nil)
-					continue;
-				if(audioepin == nil)
-					audioepin = e;
-				if(audioepout == nil)
-					audioepout = e;
 				break;
 			}
 			if((ed = setupep(audiodev, e, audiofreq)) == nil){
